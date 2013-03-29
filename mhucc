@@ -1,0 +1,162 @@
+#!/bin/bash
+# mhucc - multi-host user collision check
+# ("Muck.")
+#
+# Check for the existence of a username on multiple hosts, according to a list
+# of files.
+#
+# Written by Aaron Bugher for the FSU Biology Department.
+#
+# LICENSE:
+#
+# Copyright (c) 2013, Florida State University
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+# 1. Redistributions of source code must retain the above copyright notice,
+# this list of conditions and the following disclaimer.
+# 2. Redistributions in binary form must reproduce the above copyright
+# notice, this list of conditions and the following disclaimer in the
+# documentation and/or other materials provided with the distribution.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
+#
+# The views and conclusions contained in the software and documentation are
+# those of the authors and should not be interpreted as representing official
+# policies, either expressed or implied, of the FreeBSD Project.
+#
+# END LICENSE
+
+
+# TODO:
+# - Get the TODO items out of the code.
+# - Straighten out a capitalization scheme.
+# - Add UID as the second argument.
+
+# In-line configuration.  This could probably be split off into a config file.
+FILES="/etc/passwd /etc/group /usr/local/etc/smb.conf"
+
+# Global variables:
+USAGE="Usage:\n  usercheck [-v | -b] [...] <username> <host1> [host2 ...]"
+OUTPUT=""
+
+# Options to be set by flags are initialized here.
+VERBOSE=no
+BOOLEAN=no
+
+
+# Gather the data.
+function check_file {
+  target_host="${1}"
+  target_file="${2}"
+  ret=1
+
+  # Cheat a little -- grep will both tell us whether there was a matching line
+  # (with return value) and give us the line.
+  if
+    OUTPUT="$(
+      ssh "${target_host}" \
+        grep -s \""${target_user}"\" \""${target_file}"\"
+    )"
+  then
+    ret=0
+  fi
+
+  return ${ret}
+}
+
+
+# Process and discard option flags.
+# Mind the leading spaces scattered in this area.  They prevent flag strings
+# from being interpreted as option flags by echo.
+flag=""
+while echo " ${1}" | grep -q '^ -'; do
+
+  if [ "" == "${flag}" ]; then
+    flag="$(echo " ${1}" | sed 's/^ \(..\).*$/\1/')"
+  fi
+
+  case "${flag}" in
+    "-v")
+      VERBOSE=yes
+      ;;
+    "-b")
+      BOOLEAN=yes
+      ;;
+    *)
+      echo -e "Unrecognized option:  '${flag}'"
+      echo -e "${USAGE}" >&2
+      exit 1
+      ;;
+  esac
+
+  oldflag="${flag}"
+  flag="$(
+    echo " ${flag}" | sed 's/^\ \(-\).\(.\)/\1\2/'
+  )"
+  if [ " ${oldflag}" == "${flag}" ]; then
+    flag=""
+    shift
+  fi
+
+done
+
+# After this point, we can make some assumptions about argument order:
+# 1.  First argument is username.
+# 2.  All remaining arguments are hosts to check.
+
+# Bail if the user didn't supply enough arguments.
+if [ 2 -gt "${#}" ]; then
+  echo -e "${USAGE}" >&2
+  exit 1
+fi
+
+# Set the username.
+target_user="${1}"
+
+
+# Since we shift'ed off the option flags, arguments starting with $2 should all
+# be hostnames.
+for target_host_index in $(seq 2 ${#}); do
+  in_any_file="no"
+
+  for target_file in ${FILES}; do
+    # Mind the double dereference.
+    if check_file "${!target_host_index}" "${target_file}"; then
+      in_any_file="yes"
+      # File-by-file output:
+      if [ "no" == "${BOOLEAN}" ]; then
+        printf "MATCH:  %-23s %-23s %-23s\n" \
+          "${!target_host_index}" \
+          "${target_file}" \
+          "${target_user}"
+        if [ "yes" == "${VERBOSE}" ]; then
+          echo "${OUTPUT}"
+        fi
+      fi
+    fi
+  done
+
+  # Boolean output, per-host:
+  if [ "yes" == "${BOOLEAN}" ]; then
+    if [ "no" == "${in_any_file}" ]; then
+      printf "NO match:  %-23s\n" "${!target_host_index}"
+    else
+      printf "MATCH:     %-23s\n" "${!target_host_index}"
+    fi
+  fi
+
+done
+
