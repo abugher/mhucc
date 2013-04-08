@@ -69,7 +69,7 @@ function check_file {
   if
     OUTPUT="$(
       ssh "${SSH_OPTIONS}" "${target_host}" \
-        grep -s \""${target_user}"\" \""${target_file}"\"
+        grep -i -s \""${target_user}"\" \""${target_file}"\"
     )"
   then
     ret=0
