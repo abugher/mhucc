@@ -40,10 +40,6 @@
 # END LICENSE
 
 
-# TODO:
-# - Get the TODO items out of the code.
-# - Add UID as the second argument.
-
 # In-line configuration.  This could probably be split off into a config file.
 files="/etc/passwd /etc/group /usr/local/etc/smb.conf"
 ssh_options="-o BatchMode=yes"
