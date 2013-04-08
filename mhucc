@@ -46,19 +46,21 @@
 # - Add UID as the second argument.
 
 # In-line configuration.  This could probably be split off into a config file.
-FILES="/etc/passwd /etc/group /usr/local/etc/smb.conf"
-SSH_OPTIONS="-o BatchMode=yes"
+files="/etc/passwd /etc/group /usr/local/etc/smb.conf"
+ssh_options="-o BatchMode=yes"
 
 # Global variables:
-USAGE="Usage:\n  usercheck [-v | -b] [...] <username> <host1> [host2 ...]"
-OUTPUT=""
+usage="Usage:\n  usercheck [-v | -b] [...] <username> <host1> [host2 ...]"
+output=""
 
 # Options to be set by flags are initialized here.
-VERBOSE=no
-BOOLEAN=no
+verbose=no
+boolean=no
 
 
-# Gather the data.
+# Function definitions:
+
+
 function check_file {
   target_host="${1}"
   target_file="${2}"
@@ -67,8 +69,8 @@ function check_file {
   # Cheat a little -- grep will both tell us whether there was a matching line
   # (with return value) and give us the line.
   if
-    OUTPUT="$(
-      ssh "${SSH_OPTIONS}" "${target_host}" \
+    output="$(
+      ssh "${ssh_options}" "${target_host}" \
         grep -i -s \""${target_user}"\" \""${target_file}"\"
     )"
   then
@@ -91,14 +93,14 @@ while echo " ${1}" | grep -q '^ -'; do
 
   case "${flag}" in
     "-v")
-      VERBOSE=yes
+      verbose=yes
       ;;
     "-b")
-      BOOLEAN=yes
+      boolean=yes
       ;;
     *)
       echo -e "Unrecognized option:  '${flag}'"
-      echo -e "${USAGE}" >&2
+      echo -e "${usage}" >&2
       exit 1
       ;;
   esac
@@ -120,7 +122,7 @@ done
 
 # Bail if the user didn't supply enough arguments.
 if [ 2 -gt "${#}" ]; then
-  echo -e "${USAGE}" >&2
+  echo -e "${usage}" >&2
   exit 1
 fi
 
@@ -133,25 +135,25 @@ target_user="${1}"
 for target_host_index in $(seq 2 ${#}); do
   in_any_file="no"
 
-  for target_file in ${FILES}; do
+  for target_file in ${files}; do
     # Mind the double dereference.
     if check_file "${!target_host_index}" "${target_file}"; then
       in_any_file="yes"
       # File-by-file output:
-      if [ "no" == "${BOOLEAN}" ]; then
+      if [ "no" == "${boolean}" ]; then
         printf "MATCH:  %-23s %-23s %-23s\n" \
           "${!target_host_index}" \
           "${target_file}" \
           "${target_user}"
-        if [ "yes" == "${VERBOSE}" ]; then
-          echo "${OUTPUT}"
+        if [ "yes" == "${verbose}" ]; then
+          echo "${output}"
         fi
       fi
     fi
   done
 
   # Boolean output, per-host:
-  if [ "yes" == "${BOOLEAN}" ]; then
+  if [ "yes" == "${boolean}" ]; then
     if [ "no" == "${in_any_file}" ]; then
       printf "NO match:  %-23s\n" "${!target_host_index}"
     else
