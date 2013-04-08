@@ -49,15 +49,20 @@ files="/etc/passwd /etc/group /usr/local/etc/smb.conf"
 ssh_options="-o BatchMode=yes"
 
 # Global variables:
-usage="Usage:\n  usercheck [-v | -b] [...] <username> <host1> [host2 ...]"
+ret_collision=1
+ret_nocollision=0
+ret_insufficient_args=2
+ret_invalid_option=3
+ret_unknown_error=255
+usage="Usage:\n  usercheck [-v | -b] [...] <username> <uid> <host1> [host2 ...]"
 output=""
 errors_encountered="no"
 # Error status only gets set if there is an error.  (Not the same as no match.)
 # If error_status is non-zero, it gets returned by this script.
 error_status=0
-# If error_status is zero, last_user_exists gets returned instead.  It should
-# be 0 for true (user found) or 1 for false (user not found).
-last_user_exists=1
+# If error_status is zero, last_user_collides gets returned instead.  It should
+# be 0 for success (no collision) or 1 for failure (username or UID found).
+last_user_collides="${ret_collision}"
 
 # Options to be set by flags are initialized here.
 verbose=no
@@ -73,7 +78,7 @@ function check_file {
 
   output="$(
     ssh "${ssh_options}" "${target_host}" \
-      grep -i -s \""${target_user}"\" \""${target_file}"\"
+      egrep -i -s \""${target_user}"\|"${target_uid}"\" \""${target_file}"\"
   )"
   ssh_grep_ret="${?}"
 
@@ -101,7 +106,7 @@ while echo " ${1}" | grep -q '^ -'; do
     *)
       echo -e "Unrecognized option:  '${flag}'"
       echo -e "${usage}" >&2
-      exit 1
+      exit "${ret_invalid_option}"
       ;;
   esac
 
@@ -119,22 +124,24 @@ done
 
 # After this point, we can make some assumptions about argument order:
 # 1.  First argument is username.
-# 2.  All remaining arguments are hosts to check.
+# 2.  Second argument is UID.
+# 3.  All remaining arguments are hosts to check.
 
 # Bail if the user didn't supply enough arguments.
-if [ 2 -gt "${#}" ]; then
+if [ 3 -gt "${#}" ]; then
   echo -e "${usage}" >&2
-  exit 1
+  exit "${ret_insufficient_arguments}"
 fi
 
 
-# Set the username.
+# Set the username and UID.
 target_user="${1}"
+target_uid="${2}"
 
 
-# Since we shift'ed off the option flags, arguments starting with $2 should all
+# Since we shift'ed off the option flags, arguments starting with $3 should all
 # be hostnames.
-for target_host_index in $(seq 2 ${#}); do
+for target_host_index in $(seq 3 ${#}); do
   in_any_file="no"
 
   for target_file in ${files}; do
@@ -178,12 +185,12 @@ for target_host_index in $(seq 2 ${#}); do
   # Determine over-all whether the user exists.
   # Also the boolean output is tacked on, here.
   if [ "no" == "${in_any_file}" ]; then
-    last_user_exists=1
+    last_user_collides="${ret_nocollision}"
     if [ "yes" == "${boolean}" ]; then
       printf "NO match:  %-23s\n" "${!target_host_index}"
     fi
   else
-    last_user_exists=0
+    last_user_collides="${ret_collision}"
     if [ "yes" == "${boolean}" ]; then
       printf "MATCH:     %-23s\n" "${!target_host_index}"
     fi
@@ -192,7 +199,7 @@ for target_host_index in $(seq 2 ${#}); do
 done
 
 if [ 0 == "${error_status}" ]; then
-  exit "${last_user_exists}"
+  exit "${last_user_collides}"
 else
   exit "${error_status}"
 fi
