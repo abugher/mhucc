@@ -42,7 +42,6 @@
 
 # TODO:
 # - Get the TODO items out of the code.
-# - Straighten out a capitalization scheme.
 # - Add UID as the second argument.
 
 # In-line configuration.  This could probably be split off into a config file.
@@ -52,32 +51,33 @@ ssh_options="-o BatchMode=yes"
 # Global variables:
 usage="Usage:\n  usercheck [-v | -b] [...] <username> <host1> [host2 ...]"
 output=""
+errors_encountered="no"
+# Error status only gets set if there is an error.  (Not the same as no match.)
+# If error_status is non-zero, it gets returned by this script.
+error_status=0
+# If error_status is zero, last_user_exists gets returned instead.  It should
+# be 0 for true (user found) or 1 for false (user not found).
+last_user_exists=1
 
 # Options to be set by flags are initialized here.
 verbose=no
 boolean=no
 
 
-# Function definitions:
-
+# Function definitions.
 
 function check_file {
   target_host="${1}"
   target_file="${2}"
-  ret=1
+  ssh_grep_ret=1
 
-  # Cheat a little -- grep will both tell us whether there was a matching line
-  # (with return value) and give us the line.
-  if
-    output="$(
-      ssh "${ssh_options}" "${target_host}" \
-        grep -i -s \""${target_user}"\" \""${target_file}"\"
-    )"
-  then
-    ret=0
-  fi
+  output="$(
+    ssh "${ssh_options}" "${target_host}" \
+      grep -i -s \""${target_user}"\" \""${target_file}"\"
+  )"
+  ssh_grep_ret="${?}"
 
-  return ${ret}
+  return ${ssh_grep_ret}
 }
 
 
@@ -116,6 +116,7 @@ while echo " ${1}" | grep -q '^ -'; do
 
 done
 
+
 # After this point, we can make some assumptions about argument order:
 # 1.  First argument is username.
 # 2.  All remaining arguments are hosts to check.
@@ -125,6 +126,7 @@ if [ 2 -gt "${#}" ]; then
   echo -e "${usage}" >&2
   exit 1
 fi
+
 
 # Set the username.
 target_user="${1}"
@@ -136,30 +138,61 @@ for target_host_index in $(seq 2 ${#}); do
   in_any_file="no"
 
   for target_file in ${files}; do
+
     # Mind the double dereference.
-    if check_file "${!target_host_index}" "${target_file}"; then
-      in_any_file="yes"
-      # File-by-file output:
-      if [ "no" == "${boolean}" ]; then
-        printf "MATCH:  %-23s %-23s %-23s\n" \
-          "${!target_host_index}" \
-          "${target_file}" \
-          "${target_user}"
-        if [ "yes" == "${verbose}" ]; then
-          echo "${output}"
+    check_file "${!target_host_index}" "${target_file}"
+    check_file_ret="${?}"
+
+    case "${check_file_ret}" in
+      0)
+        # Zero indicates success.
+        in_any_file="yes"
+        # File-by-file output:
+        if [ "no" == "${boolean}" ]; then
+          printf "MATCH:  %-23s %-23s %-23s\n" \
+            "${!target_host_index}" \
+            "${target_file}" \
+            "${target_user}"
+          if [ "yes" == "${verbose}" ]; then
+            echo "${output}"
+          fi
         fi
-      fi
-    fi
+        ;;
+      1)
+        # 1 is probably from grep, just meaning no match.
+        true
+        ;;
+      *)
+        # Other return values indicate a problem like ssh failure.
+        errors_encountered="yes"
+        error_status="${check_file_ret}"
+        ;;
+    esac
   done
 
-  # Boolean output, per-host:
-  if [ "yes" == "${boolean}" ]; then
-    if [ "no" == "${in_any_file}" ]; then
+  # Report error status.
+  if [ "yes" == "${errors_encountered}" ]; then
+    echo "WARNING:  Caught code ${error_status} while checking ${target_file} on ${!target_host_index}."
+  fi
+
+  # Determine over-all whether the user exists.
+  # Also the boolean output is tacked on, here.
+  if [ "no" == "${in_any_file}" ]; then
+    last_user_exists=1
+    if [ "yes" == "${boolean}" ]; then
       printf "NO match:  %-23s\n" "${!target_host_index}"
-    else
+    fi
+  else
+    last_user_exists=0
+    if [ "yes" == "${boolean}" ]; then
       printf "MATCH:     %-23s\n" "${!target_host_index}"
     fi
   fi
 
 done
 
+if [ 0 == "${error_status}" ]; then
+  exit "${last_user_exists}"
+else
+  exit "${error_status}"
+fi
