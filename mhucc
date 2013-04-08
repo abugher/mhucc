@@ -47,6 +47,7 @@
 
 # In-line configuration.  This could probably be split off into a config file.
 FILES="/etc/passwd /etc/group /usr/local/etc/smb.conf"
+SSH_OPTIONS="-o BatchMode=yes"
 
 # Global variables:
 USAGE="Usage:\n  usercheck [-v | -b] [...] <username> <host1> [host2 ...]"
@@ -67,7 +68,7 @@ function check_file {
   # (with return value) and give us the line.
   if
     OUTPUT="$(
-      ssh "${target_host}" \
+      ssh "${SSH_OPTIONS}" "${target_host}" \
         grep -s \""${target_user}"\" \""${target_file}"\"
     )"
   then
