@@ -42,7 +42,7 @@
 
 # In-line configuration.  This could probably be split off into a config file.
 files="/etc/passwd /etc/group /usr/local/etc/smb.conf"
-ssh_options="-o BatchMode=yes"
+ssh_options="-q -o BatchMode=yes"
 
 # Global variables:
 ret_collision=1
@@ -72,9 +72,13 @@ function check_file {
   target_file="${2}"
   ssh_grep_ret=1
 
+  # Return value from test for a nonexistent file is 1.
   output="$(
-    ssh "${ssh_options}" "${target_host}" \
-      egrep -i -s \""${target_user}"\|"${target_uid}"\" \""${target_file}"\"
+    ssh "${ssh_options}" "${target_host}" 'bash -s' << END_MARKER
+      if [ -e "${target_file}" ]; then
+        egrep -i -s "${target_user}|${target_uid}" "${target_file}"
+      fi
+      END_MARKER
   )"
   ssh_grep_ret="${?}"
 
