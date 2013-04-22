@@ -49,8 +49,9 @@ ret_collision=1
 ret_nocollision=0
 ret_insufficient_args=2
 ret_invalid_option=3
+ret_insufficient_arguments=4
 ret_unknown_error=255
-usage="Usage:\n  usercheck [-v | -b] [...] <username> <uid> <host1> [host2 ...]"
+usage="Usage:\n  mhucc [-v | -b] [...] <username> <uid> <host1> [host2 ...]"
 output=""
 errors_encountered="no"
 # Error status only gets set if there is an error.  (Not the same as no match.)
@@ -73,13 +74,15 @@ function check_file {
   ssh_grep_ret=1
 
   # Return value from test for a nonexistent file is 1.
+  # Don't quote ${ssh_options}, as it needs to expand to multiple tokens.
   output="$(
-    ssh "${ssh_options}" "${target_host}" 'bash -s' << END_MARKER
+    ssh ${ssh_options} "${target_host}" 'bash -s' << END_MARKER
       if [ -e "${target_file}" ]; then
         egrep -i -s "${target_user}|${target_uid}" "${target_file}"
       fi
-      END_MARKER
+END_MARKER
   )"
+  # Remember not to indent END_MARKER, above.
   ssh_grep_ret="${?}"
 
   return ${ssh_grep_ret}
@@ -91,7 +94,6 @@ function check_file {
 # from being interpreted as option flags by echo.
 flag=""
 while echo " ${1}" | grep -q '^ -'; do
-
   if [ "" == "${flag}" ]; then
     flag="$(echo " ${1}" | sed 's/^ \(..\).*$/\1/')"
   fi
@@ -118,7 +120,6 @@ while echo " ${1}" | grep -q '^ -'; do
     flag=""
     shift
   fi
-
 done
 
 
