@@ -79,6 +79,8 @@ function check_file {
     ssh ${ssh_options} "${target_host}" 'bash -s' << END_MARKER
       if [ -e "${target_file}" ]; then
         egrep -i -s "${target_user}|${target_uid}" "${target_file}"
+      else
+        false
       fi
 END_MARKER
   )"
